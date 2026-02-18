@@ -38,12 +38,11 @@
 * 長さ 4 の配列 (Quaternion: w, x, y, z)
 * 長さ 3 の配列 (Rotation Vector / Axis-angle)
 * SciPy `Rotation` オブジェクト
-* 辞書型 (Euler angles: `{"seq": "zyx", "angles": [90, 0, 0]}` ※非推奨)
 
 **特殊な入力メソッド（自動推定しない）:**
 
 * `from_screw_param(axis, point, pitch, theta)`: ねじパラメータから生成
-* `from_euler(angles, seq, degrees, pos)`: オイラー角から生成
+* `from_euler(angle, order)`: オイラー角から生成（角度単位：ラジアン）
 
 ### 2. 内部表現 (Internal Representation)
 
@@ -166,7 +165,7 @@ p_screw = Pose6DOF.from_screw_param(
 )
 
 # オイラー角から（from_eulerメソッドを経由）
-p_euler = Pose6DOF.from_euler([90, 0, 0], 'xyz', degrees=True, pos=[1, 2, 3])
+p_euler = Pose6DOF.from_euler([np.pi/2, 0, 0], 'xyz')  # 角度はラジアン
 
 # 3. 内部表現
 # Pose6DOFクラスが持つ内部表現は4×4行列self._matrixです
