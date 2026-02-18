@@ -10,9 +10,6 @@ This script demonstrates the main features of the Pose6D class including:
 """
 
 import numpy as np
-import sys
-sys.path.insert(0, '/home/runner/work/pose6dof/pose6dof/src')
-
 from pose6dof import Pose6D
 
 

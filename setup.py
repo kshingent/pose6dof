@@ -4,7 +4,7 @@ setup(
     name="pose6dof",
     version="0.1.0",
     description="A NumPy/SciPy-based SE(3) utility class",
-    author="Your Name",
+    author="kshingent",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[

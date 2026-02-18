@@ -6,9 +6,6 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-import sys
-sys.path.insert(0, '/home/runner/work/pose6dof/pose6dof/src')
-
 from pose6dof import Pose6D
 
 
