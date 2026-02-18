@@ -188,7 +188,7 @@ p_combined = p * p_se3
 v_transformed = p_combined * np.array([1, 0, 0])
 
 # 6. 数値的なドリフトをリセット
-# normalizeメソッドは_matrix→R→_matrixとscipyのRを経由します
+# normalizeメソッドはグラム・シュミット法で正規化します（_matrix→R→_matrix経路）
 # 計算コスト: O(n²)（グラム・シュミット法による直交化）
 p_combined.normalize()
 
