@@ -351,14 +351,29 @@ class Pose6DOF:
             v = t
         else:
             omega = rotvec
-            omega_normalized = omega / theta
-            omega_hat = self._skew_symmetric(omega_normalized)
+            theta = np.linalg.norm(omega)
+            omega_hat = self._skew_symmetric(omega)  # Use unnormalized omega
             
-            # Inverse of left Jacobian
+            # Inverse of left Jacobian using standard formula
+            # V_inv = I - 1/2 * [omega]× + (1/θ² - (1+cos(θ))/(2θsin(θ))) * [omega]×²
+            half_theta = theta / 2
+            
+            # Compute the coefficient carefully to avoid numerical issues
+            if theta < 1e-4:
+                # Taylor expansion for small angles
+                coeff = 1.0 / 12.0
+            else:
+                # Standard formula: (1 - (θ/2) * cot(θ/2)) / θ²
+                tan_half = np.tan(half_theta)
+                if abs(tan_half) < 1e-10:
+                    # Near π multiples
+                    coeff = 1.0 / 12.0  # Use approximation
+                else:
+                    coeff = (1.0 / theta - 1.0 / (2.0 * tan_half)) / theta
+            
             V_inv = (np.eye(3) - 
                      0.5 * omega_hat + 
-                     (1 - theta * np.cos(theta/2) / (2 * np.sin(theta/2))) / theta * 
-                     (omega_hat @ omega_hat))
+                     coeff * (omega_hat @ omega_hat))
             
             v = V_inv @ t
         
@@ -479,9 +494,24 @@ class Pose6DOF:
             omega = self.rotvec
             if self._is_batch:
                 theta = np.linalg.norm(omega, axis=1, keepdims=True)
-                # Avoid division by zero
-                theta = np.where(theta < 1e-8, 1.0, theta)
-                self._cache['screw_axis'] = omega / theta
+                # For pure translation, use position vector direction
+                v = self.pos
+                v_norm = np.linalg.norm(v, axis=1, keepdims=True)
+                
+                # Batch computation: use omega/theta for rotation, v/v_norm for pure translation
+                axis_rotation = omega / np.where(theta < 1e-8, 1.0, theta)
+                axis_translation = v / np.where(v_norm < 1e-8, 1.0, v_norm)
+                
+                # Select based on whether theta is small (pure translation)
+                is_pure_translation = (theta < 1e-8).squeeze()
+                axis = np.where(is_pure_translation[:, np.newaxis], axis_translation, axis_rotation)
+                
+                # Default to [0, 0, 1] if both theta and v_norm are tiny
+                default_axis = np.array([0, 0, 1])
+                is_degenerate = ((theta < 1e-8) & (v_norm < 1e-8)).squeeze()
+                axis = np.where(is_degenerate[:, np.newaxis], default_axis, axis)
+                
+                self._cache['screw_axis'] = axis
             else:
                 theta = np.linalg.norm(omega)
                 if theta < 1e-8:
@@ -524,7 +554,9 @@ class Pose6DOF:
             if self._is_batch:
                 theta = np.linalg.norm(omega, axis=1, keepdims=True)
                 # For pure translation, return origin
-                point = np.where(theta[:, 0:1] < 1e-8, 
+                # theta[:, 0:1] preserves (N, 1) shape for broadcasting in np.where
+                theta_magnitude = theta[:, 0:1]  # Extract for clarity
+                point = np.where(theta_magnitude < 1e-8, 
                                np.zeros_like(v),
                                np.cross(omega, v) / (theta ** 2))
                 self._cache['screw_point'] = point
