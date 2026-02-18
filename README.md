@@ -42,7 +42,7 @@
 **特殊な入力メソッド（自動推定しない）:**
 
 * `from_screw_param(axis, point, pitch, theta)`: ねじパラメータから生成
-* `from_euler(angle, order)`: オイラー角から生成（角度単位：ラジアン）
+* `from_euler(angle, order, degrees=False)`: オイラー角から生成（デフォルトはラジアン、degrees=Trueで度数法）
 
 ### 2. 内部表現 (Internal Representation)
 
@@ -106,6 +106,9 @@ poses_batch = Pose6DOF(matrices)
 * **ポーズ同士の合成**: バッチ内の各ポーズに対して別のポーズを合成
 * **ベクトル変換**: バッチ内の各ポーズで複数の3Dベクトルを一括変換
 * **逆変換**: バッチ内の全ポーズの逆変換を一括計算
+* **正規化**: バッチ内の全ポーズを一括正規化
+* **プロパティアクセス**: `pos`, `quat`, `rotvec`, `se3`, `adjoint` など各種表現の一括取得
+* **相対ポーズ**: バッチ間の相対ポーズ計算
 
 ---
 
@@ -171,7 +174,8 @@ p_screw = Pose6DOF.from_screw_param(
 )
 
 # オイラー角から（from_eulerメソッドを経由）
-p_euler = Pose6DOF.from_euler([np.pi/2, 0, 0], 'xyz')  # 角度はラジアン
+p_euler = Pose6DOF.from_euler([np.pi/2, 0, 0], 'xyz')  # デフォルトはラジアン
+p_euler_deg = Pose6DOF.from_euler([90, 0, 0], 'xyz', degrees=True)  # 度数法も可能
 
 # 3. 内部表現
 # Pose6DOFクラスが持つ内部表現は4×4行列self._matrixです
