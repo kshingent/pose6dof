@@ -8,7 +8,6 @@ and Screw Theory for robotics applications.
 
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-from typing import Optional, Union, Tuple
 import warnings
 
 
@@ -34,39 +33,33 @@ class Pose6DOF:
     - Numerical stability with SVD normalization
     """
     
-    def __init__(self, *args, pos=None, rot=None, dual_quat=None, eager=False, **kwargs):
+    def __init__(self, *args, eager: bool = False, **kwargs) -> None:
         """
         Initialize Pose6DOF with automatic input format detection.
         
         Supported input formats:
         - No arguments: Identity matrix
-        - 4×4 matrix: Homogeneous transformation matrix
-        - 6D vector: Exponential coordinates (se(3) Lie algebra)
-        - pos, rot: Separate translation and rotation
-        - dual_quat: Dual quaternion (8D)
-        - Pose6DOF object: Copy constructor
-        - (N, 4, 4) array: Batch mode
+        - Single positional argument:
+          - 4×4 matrix: Homogeneous transformation matrix
+          - 6D vector: Exponential coordinates (se(3) Lie algebra)
+          - 8D vector: Dual quaternion
+          - Pose6DOF object: Copy constructor
+          - (N, 4, 4) array: Batch mode
+        - Two positional arguments: (position, rotation)
+          - position: 3D translation vector
+          - rotation: 3×3 matrix, 4D quaternion, 3D rotation vector, or SciPy Rotation
         
         Args:
             *args: Positional arguments for auto-detection
-            pos: Translation vector (3D)
-            rot: Rotation (3×3 matrix, quaternion, rotation vector, or SciPy Rotation)
-            dual_quat: Dual quaternion (8D)
             eager: If True, compute all representations upfront
         """
         # Initialize cache
-        self._cache = {}
-        self._is_batch = False
-        self._batch_size = 0
+        self._cache: dict = {}
+        self._is_batch: bool = False
+        self._batch_size: int = 0
         
-        # Handle different input formats
-        if dual_quat is not None:
-            # Dual quaternion input
-            self._matrix = self._from_dual_quaternion(np.asarray(dual_quat))
-        elif pos is not None or rot is not None:
-            # Separated position and rotation
-            self._matrix = self._from_pos_rot(pos, rot)
-        elif len(args) == 0:
+        # Handle different input formats based on auto-detection
+        if len(args) == 0:
             # Default: identity matrix
             self._matrix = np.eye(4)
         elif len(args) == 1:
@@ -89,10 +82,13 @@ class Pose6DOF:
                 elif arg.shape == (6,):
                     # 6D exponential coordinates (se(3))
                     self._matrix = self._exp_se3(arg)
+                elif arg.shape == (8,):
+                    # Dual quaternion input
+                    self._matrix = self._from_dual_quaternion(arg)
                 else:
                     raise ValueError(f"Unsupported input shape: {arg.shape}")
         elif len(args) == 2:
-            # Separated position and rotation
+            # Separated position and rotation (auto-detected from two arguments)
             self._matrix = self._from_pos_rot(args[0], args[1])
         else:
             raise ValueError(f"Unsupported number of arguments: {len(args)}")
@@ -102,7 +98,8 @@ class Pose6DOF:
             self._compute_all_representations()
     
     @classmethod
-    def from_screw_param(cls, axis, point, pitch, theta):
+    def from_screw_param(cls, axis: np.ndarray | list, point: np.ndarray | list, 
+                        pitch: float, theta: float) -> 'Pose6DOF':
         """
         Create Pose6DOF from screw parameters.
         
@@ -131,10 +128,11 @@ class Pose6DOF:
         moment = np.cross(axis, point)
         translation = (np.eye(3) - rot_matrix) @ moment + pitch * theta * axis
         
-        return cls(pos=translation, rot=rot)
+        return cls(translation, rot)
     
     @classmethod
-    def from_euler(cls, angles, order, degrees=False):
+    def from_euler(cls, angles: np.ndarray | list, order: str, 
+                   degrees: bool = False) -> 'Pose6DOF':
         """
         Create Pose6DOF from Euler angles.
         
@@ -147,10 +145,10 @@ class Pose6DOF:
             Pose6DOF instance
         """
         rot = R.from_euler(order, angles, degrees=degrees)
-        return cls(pos=np.zeros(3), rot=rot)
+        return cls(np.zeros(3), rot)
     
     @classmethod
-    def interpolate(cls, pose1, pose2, t):
+    def interpolate(cls, pose1: 'Pose6DOF', pose2: 'Pose6DOF', t: float) -> 'Pose6DOF':
         """
         Interpolate between two poses using Lie group structure.
         
@@ -175,7 +173,8 @@ class Pose6DOF:
         delta_pose = cls(interpolated_se3)
         return pose1 * delta_pose
     
-    def _from_pos_rot(self, pos, rot):
+    def _from_pos_rot(self, pos: np.ndarray | list | None, 
+                      rot: np.ndarray | list | R | None) -> np.ndarray:
         """Convert separated position and rotation to 4×4 matrix."""
         # Handle position
         if pos is None:
@@ -210,7 +209,7 @@ class Pose6DOF:
         matrix[:3, 3] = pos
         return matrix
     
-    def _from_dual_quaternion(self, dq):
+    def _from_dual_quaternion(self, dq: np.ndarray) -> np.ndarray:
         """Convert dual quaternion to 4×4 matrix."""
         if dq.shape != (8,):
             raise ValueError(f"Dual quaternion must be 8D, got shape {dq.shape}")
@@ -233,7 +232,7 @@ class Pose6DOF:
         
         return self._from_pos_rot(translation, rot)
     
-    def _quat_multiply(self, q1, q2):
+    def _quat_multiply(self, q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
         """Multiply two quaternions (w, x, y, z format)."""
         w1, x1, y1, z1 = q1
         w2, x2, y2, z2 = q2
@@ -244,7 +243,7 @@ class Pose6DOF:
             w1*z2 + x1*y2 - y1*x2 + z1*w2
         ])
     
-    def _normalize_matrix(self, matrix):
+    def _normalize_matrix(self, matrix: np.ndarray) -> np.ndarray:
         """Normalize input matrix using SVD if needed."""
         matrix = np.asarray(matrix, dtype=float)
         
@@ -265,7 +264,7 @@ class Pose6DOF:
         result[:3, 3] = t
         return result
     
-    def _normalize_rotation_matrix(self, R_input):
+    def _normalize_rotation_matrix(self, R_input: np.ndarray) -> np.ndarray:
         """Normalize rotation matrix using SVD."""
         # Check orthogonality
         orthogonality_error = np.linalg.norm(R_input @ R_input.T - np.eye(3))
@@ -287,7 +286,7 @@ class Pose6DOF:
         
         return R_normalized
     
-    def _exp_se3(self, se3):
+    def _exp_se3(self, se3: np.ndarray) -> np.ndarray:
         """
         Exponential map: se(3) -> SE(3)
         
@@ -331,7 +330,7 @@ class Pose6DOF:
         matrix[:3, 3] = t
         return matrix
     
-    def _log_se3(self, matrix):
+    def _log_se3(self, matrix: np.ndarray) -> np.ndarray:
         """
         Logarithm map: SE(3) -> se(3)
         
@@ -379,7 +378,7 @@ class Pose6DOF:
         
         return np.concatenate([v, omega])
     
-    def _skew_symmetric(self, v):
+    def _skew_symmetric(self, v: np.ndarray) -> np.ndarray:
         """Create skew-symmetric matrix from 3D vector."""
         return np.array([
             [0, -v[2], v[1]],
@@ -387,7 +386,7 @@ class Pose6DOF:
             [-v[1], v[0], 0]
         ])
     
-    def _compute_all_representations(self):
+    def _compute_all_representations(self) -> None:
         """Eagerly compute all representations (for eager mode)."""
         _ = self.pos
         _ = self.rot
@@ -403,12 +402,12 @@ class Pose6DOF:
     # Properties with lazy evaluation and caching
     
     @property
-    def matrix(self):
+    def matrix(self) -> np.ndarray:
         """Get 4×4 homogeneous transformation matrix."""
         return self._matrix
     
     @property
-    def pos(self):
+    def pos(self) -> np.ndarray:
         """Get translation vector (3D)."""
         if 'pos' not in self._cache:
             if self._is_batch:
@@ -418,7 +417,7 @@ class Pose6DOF:
         return self._cache['pos']
     
     @property
-    def rot(self):
+    def rot(self) -> R:
         """Get rotation as SciPy Rotation object."""
         if 'rot' not in self._cache:
             if self._is_batch:
@@ -428,7 +427,7 @@ class Pose6DOF:
         return self._cache['rot']
     
     @property
-    def quat(self):
+    def quat(self) -> np.ndarray:
         """Get rotation as quaternion (w, x, y, z)."""
         if 'quat' not in self._cache:
             quat_xyzw = self.rot.as_quat()
@@ -441,14 +440,14 @@ class Pose6DOF:
         return self._cache['quat']
     
     @property
-    def rotvec(self):
+    def rotvec(self) -> np.ndarray:
         """Get rotation as rotation vector (axis-angle)."""
         if 'rotvec' not in self._cache:
             self._cache['rotvec'] = self.rot.as_rotvec()
         return self._cache['rotvec']
     
     @property
-    def se3(self):
+    def se3(self) -> np.ndarray:
         """Get pose as 6D exponential coordinates (se(3) Lie algebra)."""
         if 'se3' not in self._cache:
             if self._is_batch:
@@ -458,7 +457,7 @@ class Pose6DOF:
         return self._cache['se3']
     
     @property
-    def adjoint(self):
+    def adjoint(self) -> np.ndarray:
         """
         Get 6×6 adjoint matrix.
         
@@ -488,7 +487,7 @@ class Pose6DOF:
         return self._cache['adjoint']
     
     @property
-    def screw_axis(self):
+    def screw_axis(self) -> np.ndarray:
         """Get screw axis (unit vector)."""
         if 'screw_axis' not in self._cache:
             omega = self.rotvec
@@ -524,7 +523,7 @@ class Pose6DOF:
         return self._cache['screw_axis']
     
     @property
-    def screw_pitch(self):
+    def screw_pitch(self) -> np.ndarray | float:
         """Get screw pitch (translation per radian)."""
         if 'screw_pitch' not in self._cache:
             omega = self.rotvec
@@ -545,7 +544,7 @@ class Pose6DOF:
         return self._cache['screw_pitch']
     
     @property
-    def screw_point(self):
+    def screw_point(self) -> np.ndarray:
         """Get a point on the screw axis."""
         if 'screw_point' not in self._cache:
             omega = self.rotvec
@@ -570,7 +569,7 @@ class Pose6DOF:
         return self._cache['screw_point']
     
     @property
-    def dual_quat(self):
+    def dual_quat(self) -> np.ndarray:
         """Get dual quaternion representation (8D)."""
         if 'dual_quat' not in self._cache:
             qr = self.quat  # Real part (rotation quaternion)
@@ -597,7 +596,7 @@ class Pose6DOF:
     
     # Methods
     
-    def normalize(self):
+    def normalize(self) -> 'Pose6DOF':
         """
         Normalize the pose to correct numerical drift.
         
@@ -640,7 +639,7 @@ class Pose6DOF:
         
         return self
     
-    def inverse(self):
+    def inverse(self) -> 'Pose6DOF':
         """
         Compute inverse transformation using geometric inversion.
         
@@ -679,7 +678,7 @@ class Pose6DOF:
             
             return Pose6DOF(inv_matrix)
     
-    def between(self, other):
+    def between(self, other: 'Pose6DOF') -> np.ndarray:
         """
         Compute relative pose between this and another pose.
         
@@ -700,7 +699,7 @@ class Pose6DOF:
     
     # Operators
     
-    def __mul__(self, other):
+    def __mul__(self, other: 'Pose6DOF | np.ndarray | list') -> 'Pose6DOF | np.ndarray':
         """
         Multiplication operator for pose composition and point transformation.
         
@@ -749,7 +748,7 @@ class Pose6DOF:
             else:
                 raise ValueError(f"Unsupported shape for point transformation: {other.shape}")
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         """String representation."""
         if self._is_batch:
             return f"Pose6DOF(batch_size={self._batch_size})"
@@ -758,7 +757,7 @@ class Pose6DOF:
             rotvec = self.rotvec
             return f"Pose6DOF(pos={pos}, rotvec={rotvec})"
     
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         """Equality comparison."""
         if not isinstance(other, Pose6DOF):
             return False
