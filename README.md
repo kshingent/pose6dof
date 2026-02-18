@@ -130,7 +130,7 @@ p = Pose6DOF(np.eye(4))
 p_se3 = Pose6DOF(np.array([0, 0, 0, 0.1, 0, 0])) # 微小なx軸回転
 
 # 2. Dual Quaternionsから初期化
-# 実部(q_r) [1,0,0,0] + 双対部(q_d) [0,0.5,0,0]: [w, x, y, z, w_d, x_d, y_d, z_d]
+# [w, x, y, z, w_d, x_d, y_d, z_d] 形式（実部4要素 + 双対部4要素）
 dq = np.array([1, 0, 0, 0, 0, 0.5, 0, 0])
 p_dq = Pose6DOF(dq)
 
@@ -163,7 +163,6 @@ v_transformed = p_combined * np.array([1, 0, 0])
 p_combined.normalize()
 
 # 8. バッチ処理
-# 複数の変換行列を一度に処理（注：実際には有効な同次変換行列を渡す必要があります）
 poses = np.stack([np.eye(4) for _ in range(10)])  # 10個の単位行列
 p_batch = Pose6DOF(poses)
 
