@@ -130,7 +130,8 @@ p = Pose6DOF(np.eye(4))
 p_se3 = Pose6DOF(np.array([0, 0, 0, 0.1, 0, 0])) # 微小なx軸回転
 
 # 2. Dual Quaternionsから初期化
-dq = np.array([1, 0, 0, 0, 0, 0.5, 0, 0])  # 実部 + 双対部
+# 実部(q_r) [1,0,0,0] + 双対部(q_d) [0,0.5,0,0]: [w, x, y, z, w_d, x_d, y_d, z_d]
+dq = np.array([1, 0, 0, 0, 0, 0.5, 0, 0])
 p_dq = Pose6DOF(dq)
 
 # 3. Screw Parametersから初期化
@@ -162,13 +163,15 @@ v_transformed = p_combined * np.array([1, 0, 0])
 p_combined.normalize()
 
 # 8. バッチ処理
-poses = np.random.randn(10, 4, 4)  # 10個のポーズ
+# 複数の変換行列を一度に処理（注：実際には有効な同次変換行列を渡す必要があります）
+poses = np.stack([np.eye(4) for _ in range(10)])  # 10個の単位行列
 p_batch = Pose6DOF(poses)
 
 # 9. 相対ポーズの計算
 p1 = Pose6DOF(np.eye(4))
 p2 = Pose6DOF.from_euler([0, 0, 45], 'zyx', [1, 0, 0])
 delta = p1.relative_pose(p2)  # se(3) の6次元ベクトルとして取得 (shape: (6,))
+# 内部で log 写像が自動的に適用されます
 
 # 10. 補間
 p_interp = p1.interpolate(p2, t=0.5)  # 中間点
