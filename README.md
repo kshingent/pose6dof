@@ -81,9 +81,9 @@
 
 ### 6. Relative Pose / Between (相対ポーズ)
 
-2つのポーズ T₁, T₂ から、相対ポーズ ΔT = T₁⁻¹T₂ をリー代数（6次元ベクトル）として直接取り出す機能を提供します。
+2つのポーズ T₁, T₂ から、相対ポーズ ΔT = T₁⁻¹T₂ を計算し、それをリー代数（6次元ベクトル）として直接取り出す機能を提供します。
 
-* `relative_pose()` メソッドによる相対変換の計算
+* `relative_pose()` メソッドによる相対変換の計算（log 写像により se(3) の6次元ベクトルとして取得）
 * se(3) リー代数としての出力により、小さな変化を効率的に表現
 * ロボットの制御やビジュアルオドメトリーに有用
 
@@ -168,7 +168,7 @@ p_batch = Pose6DOF(poses)
 # 9. 相対ポーズの計算
 p1 = Pose6DOF(np.eye(4))
 p2 = Pose6DOF.from_euler([0, 0, 45], 'zyx', [1, 0, 0])
-delta = p1.relative_pose(p2)  # リー代数として取得
+delta = p1.relative_pose(p2)  # se(3) の6次元ベクトルとして取得 (shape: (6,))
 
 # 10. 補間
 p_interp = p1.interpolate(p2, t=0.5)  # 中間点
