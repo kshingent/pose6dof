@@ -7,7 +7,7 @@ def test_init():
     """Test default initialization (identity matrix)."""
     pose = Pose6DOF()
     assert isinstance(pose, Pose6DOF)
-    # デフォルトで行列がアイデンティティになるかテスト
+    # Test that matrix is identity by default
     np.testing.assert_array_equal(pose.matrix, np.eye(4))
 
 def test_init_from_matrix():
@@ -140,3 +140,16 @@ def test_batch_operations():
     
     pose_batch = Pose6DOF(matrices)
     assert pose_batch.matrix.shape == (5, 4, 4)
+
+def test_batch_composition_not_implemented():
+    """Test that batch pose composition raises NotImplementedError."""
+    import pytest
+    
+    matrices1 = np.stack([np.eye(4) for _ in range(2)])
+    matrices2 = np.stack([np.eye(4) for _ in range(2)])
+    
+    pose_batch1 = Pose6DOF(matrices1)
+    pose_batch2 = Pose6DOF(matrices2)
+    
+    with pytest.raises(NotImplementedError):
+        _ = pose_batch1 * pose_batch2

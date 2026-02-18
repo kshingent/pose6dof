@@ -153,11 +153,12 @@ class Pose6DOF:
             raise ValueError(f"Unsupported initialization arguments")
         
         # Validate matrix shape
-        if self._matrix.shape not in [(4, 4), (3, 4, 4)]:
-            if self._matrix.ndim == 3 and self._matrix.shape[1:] == (4, 4):
-                pass  # Batch mode (N, 4, 4)
-            else:
-                raise ValueError(f"Invalid matrix shape: {self._matrix.shape}")
+        if self._matrix.ndim == 3 and self._matrix.shape[1:] == (4, 4):
+            pass  # Batch mode (N, 4, 4)
+        elif self._matrix.shape == (4, 4):
+            pass  # Single pose (4, 4)
+        else:
+            raise ValueError(f"Invalid matrix shape: {self._matrix.shape}")
         
         # Normalize rotation part if needed
         if self._matrix.ndim == 2:
@@ -256,6 +257,12 @@ class Pose6DOF:
             return rot.as_matrix()
         elif isinstance(rot, dict):
             # Dictionary format for Euler angles (legacy support, prefer from_euler)
+            warnings.warn(
+                "Dictionary format for Euler angles is deprecated. "
+                "Use Pose6DOF.from_euler() instead.",
+                DeprecationWarning,
+                stacklevel=3
+            )
             seq = rot.get('seq', 'xyz')
             angles = rot.get('angles', [0, 0, 0])
             degrees = rot.get('degrees', False)
