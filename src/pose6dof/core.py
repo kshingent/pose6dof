@@ -33,7 +33,7 @@ class Pose6DOF:
     - Numerical stability with SVD normalization
     """
     
-    def __init__(self, *args, eager: bool = False, **kwargs) -> None:
+    def __init__(self, *args, eager: bool = False) -> None:
         """
         Initialize Pose6DOF with automatic input format detection.
         
@@ -175,7 +175,12 @@ class Pose6DOF:
     
     def _from_pos_rot(self, pos: np.ndarray | list | None, 
                       rot: np.ndarray | list | R | None) -> np.ndarray:
-        """Convert separated position and rotation to 4×4 matrix."""
+        """
+        Convert separated position and rotation to 4×4 matrix.
+        
+        If pos is None, defaults to zero translation [0, 0, 0].
+        If rot is None, defaults to identity rotation (no rotation).
+        """
         # Handle position
         if pos is None:
             pos = np.zeros(3)
