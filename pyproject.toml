@@ -1,0 +1,17 @@
+[project]
+name = "pose6dof"
+version = "0.1.0"
+description = "A NumPy/SciPy-based SE(3) utility class with hybrid lazy/eager evaluation."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Kosei S. Takeda", email = "tnj2256.v.ultla@outlook.jp" },
+]
+dependencies = [
+    "scipy>=1.17.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
