@@ -78,7 +78,7 @@ class Pose6DOF:
                     # Batch mode: (N, 4, 4)
                     self._is_batch = True
                     self._batch_size = arg.shape[0]
-                    self._matrix = np.array([self._normalize_matrix(m) for m in arg])
+                    self._matrix = self._normalize_batch_matrices(arg)
                 elif arg.shape == (6,):
                     # 6D exponential coordinates (se(3))
                     self._matrix = self._exp_se3(arg)
@@ -242,15 +242,31 @@ class Pose6DOF:
     
     @staticmethod
     def _quat_multiply(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
-        """Multiply two quaternions (w, x, y, z format)."""
-        w1, x1, y1, z1 = q1
-        w2, x2, y2, z2 = q2
-        return np.array([
-            w1*w2 - x1*x2 - y1*y2 - z1*z2,
-            w1*x2 + x1*w2 + y1*z2 - z1*y2,
-            w1*y2 - x1*z2 + y1*w2 + z1*x2,
-            w1*z2 + x1*y2 - y1*x2 + z1*w2
-        ])
+        """
+        Multiply two quaternions (w, x, y, z format).
+        
+        Supports both single quaternions (4,) and batch (N, 4).
+        """
+        if q1.ndim == 1 and q2.ndim == 1:
+            # Single quaternion multiplication
+            w1, x1, y1, z1 = q1
+            w2, x2, y2, z2 = q2
+            return np.array([
+                w1*w2 - x1*x2 - y1*y2 - z1*z2,
+                w1*x2 + x1*w2 + y1*z2 - z1*y2,
+                w1*y2 - x1*z2 + y1*w2 + z1*x2,
+                w1*z2 + x1*y2 - y1*x2 + z1*w2
+            ])
+        else:
+            # Batch quaternion multiplication (N, 4) × (N, 4) -> (N, 4)
+            w1, x1, y1, z1 = q1[:, 0], q1[:, 1], q1[:, 2], q1[:, 3]
+            w2, x2, y2, z2 = q2[:, 0], q2[:, 1], q2[:, 2], q2[:, 3]
+            return np.column_stack([
+                w1*w2 - x1*x2 - y1*y2 - z1*z2,
+                w1*x2 + x1*w2 + y1*z2 - z1*y2,
+                w1*y2 - x1*z2 + y1*w2 + z1*x2,
+                w1*z2 + x1*y2 - y1*x2 + z1*w2
+            ])
     
     def _normalize_matrix(self, matrix: np.ndarray) -> np.ndarray:
         """Normalize input matrix using SVD if needed."""
@@ -271,6 +287,52 @@ class Pose6DOF:
         result = np.eye(4)
         result[:3, :3] = R_normalized
         result[:3, 3] = t
+        return result
+    
+    def _normalize_batch_matrices(self, matrices: np.ndarray) -> np.ndarray:
+        """
+        Vectorized normalization for batch of matrices using SVD.
+        
+        Args:
+            matrices: (N, 4, 4) array of transformation matrices
+            
+        Returns:
+            (N, 4, 4) array of normalized matrices
+        """
+        matrices = np.asarray(matrices, dtype=float)
+        N = matrices.shape[0]
+        
+        # Extract rotation parts: (N, 3, 3)
+        R_batch = matrices[:, :3, :3]
+        t_batch = matrices[:, :3, 3]
+        
+        # Batch SVD normalization
+        # Check orthogonality for each matrix
+        R_RT = R_batch @ R_batch.transpose(0, 2, 1)  # (N, 3, 3)
+        I_3 = np.eye(3)[np.newaxis, :, :]  # (1, 3, 3)
+        orthogonality_errors = np.linalg.norm(R_RT - I_3, axis=(1, 2))
+        
+        # Use vectorized SVD for batch processing
+        U, _, Vt = np.linalg.svd(R_batch)  # All outputs are (N, 3, 3)
+        R_normalized = U @ Vt
+        
+        # Fix reflections (det < 0)
+        dets = np.linalg.det(R_normalized)
+        need_fix = dets < 0
+        if np.any(need_fix):
+            U[need_fix, :, -1] *= -1
+            R_normalized[need_fix] = U[need_fix] @ Vt[need_fix]
+        
+        # Warn if significant corrections were made
+        if np.any(orthogonality_errors > 1e-6):
+            max_error = orthogonality_errors.max()
+            warnings.warn(f"Some rotation matrices were not orthogonal (max error: {max_error:.2e}), "
+                         "normalized using SVD.", UserWarning)
+        
+        # Reconstruct batch of 4×4 matrices
+        result = np.tile(np.eye(4), (N, 1, 1))
+        result[:, :3, :3] = R_normalized
+        result[:, :3, 3] = t_batch
         return result
     
     def _normalize_rotation_matrix(self, R_input: np.ndarray) -> np.ndarray:
@@ -388,12 +450,29 @@ class Pose6DOF:
         return np.concatenate([v, omega])
     
     def _skew_symmetric(self, v: np.ndarray) -> np.ndarray:
-        """Create skew-symmetric matrix from 3D vector."""
-        return np.array([
-            [0, -v[2], v[1]],
-            [v[2], 0, -v[0]],
-            [-v[1], v[0], 0]
-        ])
+        """
+        Create skew-symmetric matrix from 3D vector(s).
+        
+        Supports both single vector (3,) and batch (N, 3).
+        """
+        if v.ndim == 1:
+            # Single vector
+            return np.array([
+                [0, -v[2], v[1]],
+                [v[2], 0, -v[0]],
+                [-v[1], v[0], 0]
+            ])
+        else:
+            # Batch of vectors (N, 3) -> (N, 3, 3)
+            N = v.shape[0]
+            skew = np.zeros((N, 3, 3))
+            skew[:, 0, 1] = -v[:, 2]
+            skew[:, 0, 2] = v[:, 1]
+            skew[:, 1, 0] = v[:, 2]
+            skew[:, 1, 2] = -v[:, 0]
+            skew[:, 2, 0] = -v[:, 1]
+            skew[:, 2, 1] = v[:, 0]
+            return skew
     
     def _compute_all_representations(self) -> None:
         """Eagerly compute all representations (for eager mode)."""
@@ -475,14 +554,17 @@ class Pose6DOF:
         if 'adjoint' not in self._cache:
             if self._is_batch:
                 n = self._batch_size
+                R_batch = self._matrix[:, :3, :3]  # (N, 3, 3)
+                t_batch = self._matrix[:, :3, 3]   # (N, 3)
+                
+                # Vectorized skew-symmetric
+                t_hat = self._skew_symmetric(t_batch)  # (N, 3, 3)
+                
+                # Vectorized adjoint construction
                 adj = np.zeros((n, 6, 6))
-                for i in range(n):
-                    R_mat = self._matrix[i, :3, :3]
-                    t = self._matrix[i, :3, 3]
-                    t_hat = self._skew_symmetric(t)
-                    adj[i, :3, :3] = R_mat
-                    adj[i, :3, 3:] = t_hat @ R_mat
-                    adj[i, 3:, 3:] = R_mat
+                adj[:, :3, :3] = R_batch
+                adj[:, :3, 3:] = t_hat @ R_batch  # (N, 3, 3) @ (N, 3, 3)
+                adj[:, 3:, 3:] = R_batch
                 self._cache['adjoint'] = adj
             else:
                 R_mat = self._matrix[:3, :3]
@@ -585,14 +667,12 @@ class Pose6DOF:
             t = self.pos    # Translation
             
             if self._is_batch:
-                # Dual part: qd = 0.5 * t_quat * qr
+                # Dual part: qd = 0.5 * t_quat * qr (vectorized)
                 t_quat = np.zeros((self._batch_size, 4))
                 t_quat[:, 1:] = t
                 
-                # Quaternion multiplication
-                qd = np.zeros((self._batch_size, 4))
-                for i in range(self._batch_size):
-                    qd[i] = 0.5 * self._quat_multiply(t_quat[i], qr[i])
+                # Vectorized quaternion multiplication
+                qd = 0.5 * self._quat_multiply(t_quat, qr)
                 
                 self._cache['dual_quat'] = np.hstack([qr, qd])
             else:
@@ -605,6 +685,16 @@ class Pose6DOF:
     
     # Methods
     
+    def clear_cache(self) -> None:
+        """
+        Clear the internal cache of computed representations.
+        
+        This can be useful for memory management when working with many poses,
+        or after modifying the internal matrix directly (which should generally be avoided).
+        The cache will be automatically repopulated on next access to properties.
+        """
+        self._cache.clear()
+    
     def normalize(self) -> 'Pose6DOF':
         """
         Normalize the pose to correct numerical drift.
@@ -614,20 +704,23 @@ class Pose6DOF:
         """
         # Extract current rotation and translation
         if self._is_batch:
-            for i in range(self._batch_size):
-                R_mat = self._matrix[i, :3, :3]
-                
-                # Gram-Schmidt orthogonalization
-                r1 = R_mat[:, 0]
-                r1 = r1 / np.linalg.norm(r1)
-                
-                r2 = R_mat[:, 1]
-                r2 = r2 - np.dot(r2, r1) * r1
-                r2 = r2 / np.linalg.norm(r2)
-                
-                r3 = np.cross(r1, r2)
-                
-                self._matrix[i, :3, :3] = np.column_stack([r1, r2, r3])
+            # Vectorized Gram-Schmidt orthogonalization for batch
+            R_mat = self._matrix[:, :3, :3]  # (N, 3, 3)
+            
+            # First column
+            r1 = R_mat[:, :, 0]  # (N, 3)
+            r1 = r1 / np.linalg.norm(r1, axis=1, keepdims=True)  # (N, 3)
+            
+            # Second column
+            r2 = R_mat[:, :, 1]  # (N, 3)
+            r2 = r2 - np.einsum('ij,ij->i', r2, r1)[:, np.newaxis] * r1  # (N, 3)
+            r2 = r2 / np.linalg.norm(r2, axis=1, keepdims=True)  # (N, 3)
+            
+            # Third column (cross product)
+            r3 = np.cross(r1, r2)  # (N, 3)
+            
+            # Stack columns
+            self._matrix[:, :3, :3] = np.stack([r1, r2, r3], axis=2)  # (N, 3, 3)
         else:
             R_mat = self._matrix[:3, :3]
             
@@ -656,17 +749,15 @@ class Pose6DOF:
         Time complexity: O(1)
         """
         if self._is_batch:
-            inv_matrices = np.zeros_like(self._matrix)
-            for i in range(self._batch_size):
-                R_mat = self._matrix[i, :3, :3]
-                t = self._matrix[i, :3, 3]
-                
-                R_inv = R_mat.T
-                t_inv = -R_inv @ t
-                
-                inv_matrices[i] = np.eye(4)
-                inv_matrices[i, :3, :3] = R_inv
-                inv_matrices[i, :3, 3] = t_inv
+            # Vectorized batch inversion
+            R_inv = self._matrix[:, :3, :3].transpose(0, 2, 1)  # (N, 3, 3)
+            t = self._matrix[:, :3, 3:4]  # (N, 3, 1)
+            t_inv = -(R_inv @ t).squeeze(-1)  # (N, 3)
+            
+            # Construct inverse matrices
+            inv_matrices = np.tile(np.eye(4), (self._batch_size, 1, 1))
+            inv_matrices[:, :3, :3] = R_inv
+            inv_matrices[:, :3, 3] = t_inv
             
             result = Pose6DOF.__new__(Pose6DOF)
             result._matrix = inv_matrices
@@ -713,23 +804,40 @@ class Pose6DOF:
         Multiplication operator for pose composition and point transformation.
         
         Supports:
-        - Pose * Pose: Composition of transformations
+        - Pose * Pose: Composition of transformations (including Batch×Single, Single×Batch, Batch×Batch)
         - Pose * Vector: Transform 3D point
         - Pose * Vectors: Transform multiple 3D points
         """
         if isinstance(other, Pose6DOF):
-            # Pose composition
-            if self._is_batch or other._is_batch:
-                # Batch composition
+            # Pose composition with broadcasting support
+            if self._is_batch and other._is_batch:
+                # Batch × Batch
+                if self._batch_size != other._batch_size:
+                    raise ValueError(f"Batch sizes must match: {self._batch_size} vs {other._batch_size}")
                 result_matrix = self._matrix @ other._matrix
+                result_is_batch = True
+                result_batch_size = self._batch_size
+            elif self._is_batch and not other._is_batch:
+                # Batch × Single - broadcast single to all batch elements
+                result_matrix = self._matrix @ other._matrix[np.newaxis, :, :]
+                result_is_batch = True
+                result_batch_size = self._batch_size
+            elif not self._is_batch and other._is_batch:
+                # Single × Batch - broadcast single to all batch elements
+                result_matrix = self._matrix[np.newaxis, :, :] @ other._matrix
+                result_is_batch = True
+                result_batch_size = other._batch_size
             else:
+                # Single × Single
                 result_matrix = self._matrix @ other._matrix
+                result_is_batch = False
+                result_batch_size = 0
             
             result = Pose6DOF.__new__(Pose6DOF)
             result._matrix = result_matrix
             result._cache = {}
-            result._is_batch = self._is_batch or other._is_batch
-            result._batch_size = max(self._batch_size, other._batch_size)
+            result._is_batch = result_is_batch
+            result._batch_size = result_batch_size
             return result
         else:
             # Point transformation
