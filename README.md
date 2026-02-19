@@ -173,8 +173,9 @@ p_screw = Pose6DOF.from_screw_param(
 )
 
 # オイラー角から（from_eulerメソッドを経由）
-p_euler = Pose6DOF.from_euler([np.pi/2, 0, 0], 'xyz')  # デフォルトはラジアン
-p_euler_deg = Pose6DOF.from_euler([90, 0, 0], 'xyz', degrees=True)  # 度数法も可能
+p_euler = Pose6DOF.from_euler([np.pi/2, 0, 0], 'xyz', pos=[0, 0, 0])  # デフォルトはラジアン
+p_euler_deg = Pose6DOF.from_euler([90, 0, 0], 'xyz', pos=[0, 0, 0], degrees=True)  # 度数法も可能
+p_euler_with_pos = Pose6DOF.from_euler([90, 0, 0], 'xyz', pos=[1, 2, 3], degrees=True)  # 位置を指定
 
 # 3. 内部表現
 # Pose6DOFクラスが持つ内部表現は4×4行列self._matrixです
