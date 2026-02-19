@@ -148,6 +148,10 @@ class Pose6DOF:
         rot = R.from_euler(order, angles, degrees=degrees)
         if pos is None:
             pos = np.zeros(3)
+        else:
+            pos = np.asarray(pos)
+            if pos.shape != (3,):
+                raise ValueError(f"Position must be a 3D vector, got shape {pos.shape}")
         return cls(pos, rot)
     
     @classmethod
@@ -751,8 +755,9 @@ class Pose6DOF:
         if self._is_batch:
             # Vectorized batch inversion
             R_inv = self._matrix[:, :3, :3].transpose(0, 2, 1)  # (N, 3, 3)
-            t = self._matrix[:, :3, 3:4]  # (N, 3, 1)
-            t_inv = -(R_inv @ t).squeeze(-1)  # (N, 3)
+            t = self._matrix[:, :3, 3]  # (N, 3)
+            # Vectorized matrix-vector multiplication: (N, 3, 3) @ (N, 3) -> (N, 3)
+            t_inv = -np.einsum('nij,nj->ni', R_inv, t)  # (N, 3)
             
             # Construct inverse matrices
             inv_matrices = np.tile(np.eye(4), (self._batch_size, 1, 1))
