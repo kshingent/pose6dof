@@ -132,26 +132,23 @@ class Pose6DOF:
     
     @classmethod
     def from_euler(cls, angles: np.ndarray | list, order: str, 
-                   degrees: bool = False, pos: np.ndarray | list | None = None) -> 'Pose6DOF':
+                   pos: np.ndarray | list, degrees: bool = False) -> 'Pose6DOF':
         """
         Create Pose6DOF from Euler angles.
         
         Args:
             angles: Euler angles (3D vector)
             order: Rotation order (e.g., 'xyz', 'zyx')
+            pos: Position vector (3D). Required.
             degrees: If True, angles are in degrees; otherwise radians
-            pos: Optional position vector (3D). Defaults to [0, 0, 0] if None.
         
         Returns:
             Pose6DOF instance
         """
         rot = R.from_euler(order, angles, degrees=degrees)
-        if pos is None:
-            pos = np.zeros(3)
-        else:
-            pos = np.asarray(pos)
-            if pos.shape != (3,):
-                raise ValueError(f"Position must be a 3D vector, got shape {pos.shape}")
+        pos = np.asarray(pos)
+        if pos.shape != (3,):
+            raise ValueError(f"Position must be a 3D vector, got shape {pos.shape}")
         return cls(pos, rot)
     
     @classmethod
