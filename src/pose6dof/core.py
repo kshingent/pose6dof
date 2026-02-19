@@ -132,7 +132,7 @@ class Pose6DOF:
     
     @classmethod
     def from_euler(cls, angles: np.ndarray | list, order: str, 
-                   degrees: bool = False) -> 'Pose6DOF':
+                   degrees: bool = False, pos: np.ndarray | list | None = None) -> 'Pose6DOF':
         """
         Create Pose6DOF from Euler angles.
         
@@ -140,12 +140,15 @@ class Pose6DOF:
             angles: Euler angles (3D vector)
             order: Rotation order (e.g., 'xyz', 'zyx')
             degrees: If True, angles are in degrees; otherwise radians
+            pos: Optional position vector (3D). Defaults to [0, 0, 0] if None.
         
         Returns:
             Pose6DOF instance
         """
         rot = R.from_euler(order, angles, degrees=degrees)
-        return cls(np.zeros(3), rot)
+        if pos is None:
+            pos = np.zeros(3)
+        return cls(pos, rot)
     
     @classmethod
     def interpolate(cls, pose1: 'Pose6DOF', pose2: 'Pose6DOF', t: float) -> 'Pose6DOF':
@@ -237,7 +240,8 @@ class Pose6DOF:
         
         return self._from_pos_rot(translation, rot)
     
-    def _quat_multiply(self, q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def _quat_multiply(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
         """Multiply two quaternions (w, x, y, z format)."""
         w1, x1, y1, z1 = q1
         w2, x2, y2, z2 = q2
